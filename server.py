@@ -169,6 +169,7 @@ async def _handle_auto_reply(session_id):
 
 # ---------- WebSocket handler ----------
 async def handle_connection(websocket):
+    global current_system_prompt
     session_id = None
     is_operator = False
 
@@ -261,7 +262,6 @@ async def handle_connection(websocket):
                     asyncio.create_task(_handle_auto_reply(target_sid))
 
             elif msg_type == 'set_prompt':
-                global current_system_prompt
                 new_prompt = (data.get('prompt') or '').strip()
                 if new_prompt:
                     current_system_prompt = new_prompt
