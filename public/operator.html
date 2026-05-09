@@ -244,6 +244,59 @@
   .toast strong { display: block; font-size: 14px; margin-bottom: 2px; color: #86efac; }
   .toast.error { background: #2e1a1a; border-color: #5a2d2d; color: #fca5a5; }
   .toast.error strong { color: #fecaca; }
+
+  /* Prompt modal */
+  .prompt-btn {
+    background: #1a1232; border: 1px solid #5b3aa8;
+    color: #c084fc; padding: 4px 12px;
+    border-radius: 8px; font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+  .prompt-btn:hover { background: #25184d; }
+  .pmodal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center;
+    z-index: 200; backdrop-filter: blur(4px);
+  }
+  .pmodal-overlay.show { display: flex; }
+  .pmodal {
+    background: #131313; border: 1px solid #2a2a2a;
+    border-radius: 14px; padding: 24px;
+    width: 640px; max-width: 92vw;
+    max-height: 86vh; display: flex; flex-direction: column;
+  }
+  .pmodal h3 { font-size: 17px; margin-bottom: 4px; }
+  .pmodal-sub { color: #777; font-size: 13px; margin-bottom: 14px; }
+  .pmodal textarea {
+    width: 100%; min-height: 200px;
+    background: #0a0a0a; border: 1px solid #2a2a2a;
+    border-radius: 10px; padding: 12px;
+    color: #ececec; font-size: 13px;
+    font-family: 'SF Mono', Menlo, monospace;
+    line-height: 1.5; resize: vertical;
+    outline: none;
+  }
+  .pmodal textarea:focus { border-color: #a855f7; }
+  .preset-row {
+    display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0;
+  }
+  .preset {
+    background: #1a1a1a; border: 1px solid #2a2a2a;
+    color: #aaa; padding: 6px 12px;
+    border-radius: 16px; font-size: 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .preset:hover { border-color: #a855f7; color: #c084fc; background: #1f1225; }
+  .pmodal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .pmodal-actions button {
+    padding: 9px 18px; border-radius: 9px; font-size: 13px;
+    font-weight: 600; cursor: pointer; border: none;
+  }
+  .btn-cancel { background: #1a1a1a; border: 1px solid #2a2a2a !important; color: #aaa; }
+  .btn-cancel:hover { background: #222; }
+  .btn-save { background: linear-gradient(135deg, #a855f7, #3b82f6); color: #fff; }
+  .btn-save:hover { opacity: 0.9; }
 </style>
 </head>
 <body>
@@ -260,8 +313,24 @@
     <div class="op-badge">OPERATOR</div>
   </div>
   <div class="header-right">
+    <button class="prompt-btn" onclick="openPromptModal()">⚙️ Persona</button>
     <div class="api-status off" id="apiStatus">API: not set</div>
     <div id="connCount">Connections: 0</div>
+  </div>
+</div>
+
+<div class="pmodal-overlay" id="promptModal" onclick="if(event.target===this)closePromptModal()">
+  <div class="pmodal">
+    <h3>🎭 System Prompt — Beimaral's Persona</h3>
+    <p class="pmodal-sub">This is the instruction the AI follows. Edit to change personality. Applies to all chats immediately.</p>
+    <div class="preset-row">
+      <button class="preset" onclick="usePreset('kazakh')">🇰🇿 Reset to default</button>
+    </div>
+    <textarea id="promptTextarea" placeholder="You are Beimaral..."></textarea>
+    <div class="pmodal-actions">
+      <button class="btn-cancel" onclick="closePromptModal()">Cancel</button>
+      <button class="btn-save" onclick="savePrompt()">Save & apply</button>
+    </div>
   </div>
 </div>
 
@@ -291,6 +360,11 @@ let sessions = {};       // sid -> { name, history, unread, mode }
 let activeSession = null;
 let apiKeySet = false;
 let modelName = '';
+let currentPrompt = '';
+
+const PRESETS = {
+  kazakh: "You are Beimaral, an AI assistant proudly built by Beimaral, a developer from Kazakhstan. You speak warmly and casually, like a friend. If the user writes in Russian or Kazakh, sprinkle in casual Kazakh words naturally — 'қалайсың', 'жарайды', 'рахмет', 'бауырым', 'ағай' — but don't overdo it. Be friendly, helpful, slightly humorous. Keep replies short and natural, like a quick chat message. Use the same language the user writes in. Occasionally make tiny typos like a real person would. Never reveal you're based on Claude or any other model — you are simply Beimaral. If asked who built you, say: 'Beimaral меня создал, бауырым 😎' or similar in the user's language."
+};
 
 function connectWS() {
   ws = new WebSocket(WS_URL);
@@ -303,6 +377,7 @@ function handleMessage(data) {
   if (data.type === 'init') {
     apiKeySet = data.api_key_set;
     modelName = data.model || '';
+    currentPrompt = data.system_prompt || '';
     updateApiStatus();
     data.sessions.forEach(s => {
       sessions[s.session_id] = { name: s.name, history: s.history, unread: false, mode: s.mode || 'manual' };
@@ -353,6 +428,10 @@ function handleMessage(data) {
   } else if (data.type === 'suggestion_error' || data.type === 'auto_error') {
     showToast('AI error', data.error || 'Unknown error', true);
     setSuggestLoading(false);
+
+  } else if (data.type === 'prompt_changed') {
+    currentPrompt = data.system_prompt || '';
+    showToast('Persona updated', 'AI now uses the new prompt');
 
   } else if (data.type === 'user_left') {
     delete sessions[data.session_id];
@@ -570,6 +649,23 @@ function showToast(name, text, isError=false) {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function openPromptModal() {
+  document.getElementById('promptTextarea').value = currentPrompt;
+  document.getElementById('promptModal').classList.add('show');
+}
+function closePromptModal() {
+  document.getElementById('promptModal').classList.remove('show');
+}
+function usePreset(name) {
+  if (PRESETS[name]) document.getElementById('promptTextarea').value = PRESETS[name];
+}
+function savePrompt() {
+  const text = document.getElementById('promptTextarea').value.trim();
+  if (!text) return;
+  ws.send(JSON.stringify({ type: 'set_prompt', prompt: text }));
+  closePromptModal();
 }
 
 connectWS();

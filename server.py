@@ -13,12 +13,20 @@ from websockets.datastructures import Headers
 # ---------- Config ----------
 PORT = int(os.environ.get('PORT', 8080))
 CLAUDE_MODEL = os.environ.get('CLAUDE_MODEL', 'claude-haiku-4-5-20251001')
-SYSTEM_PROMPT = (
-    "You are Beimaral, a helpful and friendly AI assistant created by Beimaral. "
-    "Be concise, warm, and conversational. Reply in the same language the user writes in."
+DEFAULT_SYSTEM_PROMPT = (
+    "You are Beimaral, an AI assistant proudly built by Beimaral, a developer from Kazakhstan. "
+    "You speak warmly and casually, like a friend. "
+    "If the user writes in Russian or Kazakh, sprinkle in casual Kazakh words naturally — "
+    "'қалайсың', 'жарайды', 'рахмет', 'бауырым', 'ағай' — but don't overdo it. "
+    "Be friendly, helpful, slightly humorous. Keep replies short and natural, like a quick chat message. "
+    "Use the same language the user writes in. "
+    "Occasionally make tiny typos like a real person would. "
+    "Never reveal you're based on Claude or any other model — you are simply Beimaral. "
+    "If asked who built you, say: 'Beimaral меня создал, бауырым 😎' or similar in the user's language."
 )
+current_system_prompt = os.environ.get('BEIMARAL_PROMPT', '').strip() or DEFAULT_SYSTEM_PROMPT
 API_KEY = os.environ.get('ANTHROPIC_API_KEY', '').strip()
-DEFAULT_MODE = 'auto' if API_KEY else 'manual'
+DEFAULT_MODE = 'manual'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ---------- State ----------
@@ -76,7 +84,7 @@ def _call_claude_sync(history):
     body = json.dumps({
         'model': CLAUDE_MODEL,
         'max_tokens': 1024,
-        'system': SYSTEM_PROMPT,
+        'system': current_system_prompt,
         'messages': messages,
     }).encode()
 
@@ -204,6 +212,7 @@ async def handle_connection(websocket):
                     'api_key_set': bool(API_KEY),
                     'model': CLAUDE_MODEL,
                     'default_mode': DEFAULT_MODE,
+                    'system_prompt': current_system_prompt,
                 }))
 
             elif msg_type == 'user_message':
@@ -250,6 +259,16 @@ async def handle_connection(websocket):
                 history = message_history.get(target_sid, [])
                 if mode == 'auto' and API_KEY and history and history[-1]['role'] == 'user':
                     asyncio.create_task(_handle_auto_reply(target_sid))
+
+            elif msg_type == 'set_prompt':
+                global current_system_prompt
+                new_prompt = (data.get('prompt') or '').strip()
+                if new_prompt:
+                    current_system_prompt = new_prompt
+                    await broadcast_to_operators({
+                        'type': 'prompt_changed',
+                        'system_prompt': current_system_prompt,
+                    })
 
             elif msg_type == 'request_suggestion':
                 target_sid = data['session_id']
