@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beimaral Chat — Operator Panel</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0a0a0a;
+    color: #ececec;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px;
+    background: #111;
+    border-bottom: 1px solid #1e1e1e;
+    flex-shrink: 0;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .logo { font-size: 16px; font-weight: 700; }
+  .op-badge {
+    background: #1a2e1a; border: 1px solid #2d5a2d; color: #4ade80;
+    font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600;
+  }
+  .status-dot {
+    width: 8px; height: 8px; background: #4ade80; border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .header-right { font-size: 12px; color: #555; display: flex; gap: 14px; align-items: center; }
+  .api-status {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 600;
+  }
+  .api-status.on { background: #1a2e1a; border: 1px solid #2d5a2d; color: #4ade80; }
+  .api-status.off { background: #2e1a1a; border: 1px solid #5a2d2d; color: #f87171; }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  .sidebar {
+    width: 260px; flex-shrink: 0;
+    border-right: 1px solid #1e1e1e;
+    background: #0e0e0e;
+    display: flex; flex-direction: column;
+  }
+  .sidebar-header {
+    padding: 14px 16px;
+    font-size: 11px; font-weight: 600; color: #555;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    border-bottom: 1px solid #1a1a1a;
+  }
+  .sessions-list { flex: 1; overflow-y: auto; }
+  .sessions-list::-webkit-scrollbar { width: 3px; }
+  .sessions-list::-webkit-scrollbar-thumb { background: #2a2a2a; }
+
+  .session-item {
+    padding: 12px 16px; cursor: pointer;
+    border-bottom: 1px solid #141414;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .session-item:hover { background: #161616; }
+  .session-item.active { background: #1a1a2e; border-left: 2px solid #3b82f6; }
+  .session-item.has-unread::after {
+    content: ''; position: absolute; right: 14px; top: 50%;
+    transform: translateY(-50%);
+    width: 8px; height: 8px;
+    background: #f59e0b; border-radius: 50%;
+  }
+  .session-name { font-size: 14px; font-weight: 600; margin-bottom: 3px; display: flex; align-items: center; gap: 6px; }
+  .session-mode-tag {
+    font-size: 9px; font-weight: 700;
+    padding: 1px 6px; border-radius: 8px;
+    letter-spacing: 0.5px;
+  }
+  .session-mode-tag.auto { background: #1a2e2a; color: #34d399; border: 1px solid #1f5147; }
+  .session-mode-tag.manual { background: #2a2a1a; color: #fbbf24; border: 1px solid #51471f; }
+  .session-preview { font-size: 12px; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-time { font-size: 11px; color: #3a3a3a; margin-top: 3px; }
+
+  .no-sessions {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 200px; color: #333;
+    font-size: 13px; text-align: center; gap: 8px;
+  }
+  .no-sessions span { font-size: 32px; }
+
+  .chat-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .chat-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid #1a1a1a;
+    background: #0e0e0e;
+    display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  .chat-header .user-avatar {
+    width: 32px; height: 32px;
+    background: #2a2a2a; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px;
+  }
+  .chat-header-info { flex: 1; }
+  .chat-header-name { font-size: 14px; font-weight: 600; }
+  .chat-header-sub { font-size: 12px; color: #555; }
+
+  /* Mode toggle */
+  .mode-toggle {
+    display: flex; background: #141414; border: 1px solid #222; border-radius: 10px;
+    padding: 3px;
+  }
+  .mode-toggle button {
+    background: transparent; border: none; color: #666;
+    padding: 6px 14px; font-size: 12px; font-weight: 600;
+    border-radius: 7px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mode-toggle button.active.manual { background: #51471f; color: #fbbf24; }
+  .mode-toggle button.active.auto { background: #1f5147; color: #34d399; }
+  .mode-toggle button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .messages {
+    flex: 1; overflow-y: auto;
+    padding: 16px 20px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+
+  .empty-panel {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    flex: 1; color: #333; gap: 8px; font-size: 14px;
+  }
+  .empty-panel span { font-size: 40px; }
+
+  .msg-wrap { display: flex; flex-direction: column; gap: 2px; }
+  .msg-wrap.user-wrap { align-items: flex-start; }
+  .msg-wrap.op-wrap { align-items: flex-end; }
+  .msg-label { font-size: 11px; color: #444; margin-bottom: 2px; }
+
+  .msg-bubble {
+    max-width: 75%;
+    padding: 9px 13px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .msg-bubble.from-user {
+    background: #1e1e1e; border: 1px solid #2a2a2a;
+    border-radius: 4px 12px 12px 12px; color: #ddd;
+  }
+  .msg-bubble.from-op {
+    background: linear-gradient(135deg, #1e3a5f, #2d1b4e);
+    border: 1px solid #2a4a7a;
+    border-radius: 12px 4px 12px 12px;
+    color: #c9e0ff;
+  }
+  .msg-bubble.from-ai {
+    background: linear-gradient(135deg, #1e3a3a, #1b3a4e);
+    border: 1px solid #2a6a5a;
+  }
+  .msg-time-small { font-size: 10px; color: #3a3a3a; }
+  .msg-bubble.new-msg { animation: flashNew 1s ease-out; }
+  @keyframes flashNew { 0% { box-shadow: 0 0 0 2px #f59e0b88; } 100% { box-shadow: none; } }
+
+  .reply-area {
+    padding: 14px 20px;
+    border-top: 1px solid #1a1a1a;
+    background: #0e0e0e;
+    flex-shrink: 0;
+  }
+  .quick-replies {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-bottom: 10px;
+  }
+  .qr-chip {
+    background: #141414; border: 1px solid #222;
+    border-radius: 16px; padding: 5px 12px;
+    font-size: 12px; color: #666;
+    cursor: pointer; transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .qr-chip:hover { border-color: #3b82f6; color: #60a5fa; background: #0d1929; }
+  .qr-chip.suggest {
+    background: #1a1232; border-color: #5b3aa8; color: #c084fc;
+  }
+  .qr-chip.suggest:hover { background: #25184d; border-color: #a855f7; color: #d8b4fe; }
+  .qr-chip.suggest:disabled, .qr-chip.suggest.loading { opacity: 0.5; cursor: wait; }
+
+  .reply-wrap {
+    display: flex; gap: 10px;
+    background: #141414; border: 1px solid #222;
+    border-radius: 12px; padding: 10px 14px;
+    transition: border-color 0.2s;
+  }
+  .reply-wrap:focus-within { border-color: #3b82f655; }
+  .reply-wrap textarea {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: #ececec; font-size: 14px; resize: none;
+    max-height: 120px; font-family: inherit; line-height: 1.5;
+  }
+  .reply-wrap textarea::placeholder { color: #333; }
+  .reply-wrap textarea:disabled { color: #444; }
+  .reply-btn {
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    border: none; border-radius: 8px;
+    padding: 8px 16px; color: #fff;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer; align-self: flex-end;
+    transition: opacity 0.2s; white-space: nowrap;
+  }
+  .reply-btn:hover { opacity: 0.85; }
+  .reply-btn:disabled { opacity: 0.3; cursor: default; }
+
+  .auto-banner {
+    padding: 10px 14px;
+    background: #0d2d23; border: 1px solid #1f5147;
+    border-radius: 10px; color: #6ee7b7;
+    font-size: 13px; text-align: center;
+  }
+
+  .toast {
+    position: fixed; top: 60px; right: 20px;
+    background: #1a2e1a; border: 1px solid #2d5a2d;
+    border-radius: 10px; padding: 12px 16px;
+    font-size: 13px; color: #4ade80;
+    z-index: 999;
+    transform: translateX(120%);
+    transition: transform 0.3s ease;
+    max-width: 280px;
+  }
+  .toast.show { transform: translateX(0); }
+  .toast strong { display: block; font-size: 14px; margin-bottom: 2px; color: #86efac; }
+  .toast.error { background: #2e1a1a; border-color: #5a2d2d; color: #fca5a5; }
+  .toast.error strong { color: #fecaca; }
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast">
+  <strong id="toastName"></strong>
+  <span id="toastText"></span>
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="status-dot"></div>
+    <div class="logo">Beimaral Chat</div>
+    <div class="op-badge">OPERATOR</div>
+  </div>
+  <div class="header-right">
+    <div class="api-status off" id="apiStatus">API: not set</div>
+    <div id="connCount">Connections: 0</div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-header">Active chats</div>
+    <div class="sessions-list" id="sessionsList">
+      <div class="no-sessions">
+        <span>💤</span>
+        No one yet.<br>Share the link with friends!
+      </div>
+    </div>
+  </div>
+
+  <div class="chat-panel" id="chatPanel">
+    <div class="empty-panel" id="emptyPanel">
+      <span>👈</span>
+      Select a chat from the sidebar
+    </div>
+  </div>
+</div>
+
+<script>
+const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+let ws;
+let sessions = {};       // sid -> { name, history, unread, mode }
+let activeSession = null;
+let apiKeySet = false;
+let modelName = '';
+
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'join_operator' }));
+  ws.onmessage = e => handleMessage(JSON.parse(e.data));
+  ws.onclose = () => setTimeout(connectWS, 2000);
+}
+
+function handleMessage(data) {
+  if (data.type === 'init') {
+    apiKeySet = data.api_key_set;
+    modelName = data.model || '';
+    updateApiStatus();
+    data.sessions.forEach(s => {
+      sessions[s.session_id] = { name: s.name, history: s.history, unread: false, mode: s.mode || 'manual' };
+    });
+    renderSidebar();
+
+  } else if (data.type === 'new_user') {
+    sessions[data.session_id] = {
+      name: data.name, history: data.history || [], unread: false, mode: data.mode || 'manual'
+    };
+    renderSidebar();
+    showToast(data.name, 'joined the chat');
+
+  } else if (data.type === 'user_message') {
+    const sid = data.session_id;
+    if (!sessions[sid]) sessions[sid] = { name: data.name, history: [], unread: false, mode: 'manual' };
+    sessions[sid].history.push({ role: 'user', text: data.text, time: data.time });
+    if (activeSession !== sid) {
+      sessions[sid].unread = true;
+      showToast(data.name, data.text);
+    }
+    renderSidebar();
+    if (activeSession === sid) appendMessage('user', data.text, data.time, true);
+
+  } else if (data.type === 'operator_sent') {
+    const sid = data.session_id;
+    if (sessions[sid]) sessions[sid].history.push({ role: 'assistant', text: data.text, time: data.time });
+    renderSidebar();
+    if (activeSession === sid) appendMessage('assistant', data.text, data.time, false);
+
+  } else if (data.type === 'mode_changed') {
+    const sid = data.session_id;
+    if (sessions[sid]) sessions[sid].mode = data.mode;
+    renderSidebar();
+    if (activeSession === sid) updateModeUI();
+
+  } else if (data.type === 'suggestion') {
+    if (data.session_id === activeSession) {
+      const input = document.getElementById('replyInput');
+      if (input) {
+        input.value = data.text;
+        autoResize(input);
+        input.focus();
+      }
+      setSuggestLoading(false);
+    }
+
+  } else if (data.type === 'suggestion_error' || data.type === 'auto_error') {
+    showToast('AI error', data.error || 'Unknown error', true);
+    setSuggestLoading(false);
+
+  } else if (data.type === 'user_left') {
+    delete sessions[data.session_id];
+    if (activeSession === data.session_id) {
+      activeSession = null;
+      showChatPanel(null);
+    }
+    renderSidebar();
+  }
+
+  updateConnCount();
+}
+
+function updateApiStatus() {
+  const el = document.getElementById('apiStatus');
+  if (apiKeySet) {
+    el.className = 'api-status on';
+    el.textContent = `API: ${modelName}`;
+  } else {
+    el.className = 'api-status off';
+    el.textContent = 'API: not set';
+  }
+}
+
+function updateConnCount() {
+  document.getElementById('connCount').textContent = `Connections: ${Object.keys(sessions).length}`;
+}
+
+function renderSidebar() {
+  const list = document.getElementById('sessionsList');
+  const sids = Object.keys(sessions);
+  if (!sids.length) {
+    list.innerHTML = `<div class="no-sessions"><span>💤</span>No one yet.<br>Share the link with friends!</div>`;
+    return;
+  }
+  list.innerHTML = sids.map(sid => {
+    const s = sessions[sid];
+    const last = s.history[s.history.length - 1];
+    const preview = last ? last.text.slice(0, 40) + (last.text.length > 40 ? '…' : '') : 'Just connected';
+    const time = last ? last.time : '';
+    const isActive = sid === activeSession;
+    const hasUnread = s.unread;
+    const modeTag = s.mode === 'auto'
+      ? `<span class="session-mode-tag auto">AUTO</span>`
+      : `<span class="session-mode-tag manual">MANUAL</span>`;
+    return `<div class="session-item ${isActive ? 'active' : ''} ${hasUnread ? 'has-unread' : ''}"
+      onclick="selectSession('${sid}')">
+      <div class="session-name">${escHtml(s.name)} ${modeTag}</div>
+      <div class="session-preview">${escHtml(preview)}</div>
+      <div class="session-time">${time}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectSession(sid) {
+  activeSession = sid;
+  if (sessions[sid]) sessions[sid].unread = false;
+  renderSidebar();
+  showChatPanel(sid);
+}
+
+function showChatPanel(sid) {
+  const panel = document.getElementById('chatPanel');
+  if (!sid || !sessions[sid]) {
+    panel.innerHTML = `<div class="empty-panel"><span>👈</span>Select a chat from the sidebar</div>`;
+    return;
+  }
+  const s = sessions[sid];
+  const isAuto = s.mode === 'auto';
+  panel.innerHTML = `
+    <div class="chat-header">
+      <div class="user-avatar">${s.name[0].toUpperCase()}</div>
+      <div class="chat-header-info">
+        <div class="chat-header-name">${escHtml(s.name)}</div>
+        <div class="chat-header-sub">Online</div>
+      </div>
+      <div class="mode-toggle">
+        <button class="${!isAuto ? 'active manual' : ''}" onclick="setMode('manual')">✋ Manual</button>
+        <button class="${isAuto ? 'active auto' : ''}" onclick="setMode('auto')" ${apiKeySet ? '' : 'disabled title="API key not set"'}>🤖 Auto AI</button>
+      </div>
+    </div>
+    <div class="messages" id="msgArea">
+      ${s.history.map(m => messagHTML(m.role, m.text, m.time, false)).join('')}
+    </div>
+    <div class="reply-area" id="replyArea">
+      ${replyAreaHTML(isAuto)}
+    </div>`;
+  const msgArea = document.getElementById('msgArea');
+  if (msgArea) msgArea.scrollTop = msgArea.scrollHeight;
+  document.getElementById('replyInput')?.focus();
+}
+
+function replyAreaHTML(isAuto) {
+  if (isAuto) {
+    return `<div class="auto-banner">🤖 Auto AI mode is on — Beimaral replies automatically. Switch to Manual to take over.</div>`;
+  }
+  return `
+    <div class="quick-replies">
+      <button class="qr-chip suggest" id="suggestBtn" onclick="requestSuggestion()" ${apiKeySet ? '' : 'disabled'}>
+        ✨ Suggest with AI
+      </button>
+      <div class="qr-chip" onclick="useQR(this)">Hi! How can I help?</div>
+      <div class="qr-chip" onclick="useQR(this)">Let me think about that...</div>
+      <div class="qr-chip" onclick="useQR(this)">Great question!</div>
+      <div class="qr-chip" onclick="useQR(this)">Could you clarify?</div>
+      <div class="qr-chip" onclick="useQR(this)">I can't share that.</div>
+    </div>
+    <div class="reply-wrap">
+      <textarea id="replyInput" placeholder="Reply as AI..." rows="1"
+        oninput="autoResize(this)" onkeydown="handleReplyKey(event)"></textarea>
+      <button class="reply-btn" onclick="sendReply()">Send</button>
+    </div>`;
+}
+
+function updateModeUI() {
+  const s = sessions[activeSession];
+  if (!s) return;
+  const isAuto = s.mode === 'auto';
+  const replyArea = document.getElementById('replyArea');
+  if (replyArea) replyArea.innerHTML = replyAreaHTML(isAuto);
+
+  // update toggle buttons
+  document.querySelectorAll('.mode-toggle button').forEach(btn => btn.classList.remove('active','manual','auto'));
+  const buttons = document.querySelectorAll('.mode-toggle button');
+  if (buttons.length === 2) {
+    buttons[0].className = !isAuto ? 'active manual' : '';
+    buttons[1].className = isAuto ? 'active auto' : '';
+  }
+}
+
+function setMode(mode) {
+  if (!activeSession) return;
+  if (mode === 'auto' && !apiKeySet) {
+    showToast('Cannot enable Auto', 'ANTHROPIC_API_KEY is not set on the server', true);
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'set_mode', session_id: activeSession, mode }));
+}
+
+function requestSuggestion() {
+  if (!activeSession || !apiKeySet) return;
+  setSuggestLoading(true);
+  ws.send(JSON.stringify({ type: 'request_suggestion', session_id: activeSession }));
+}
+
+function setSuggestLoading(loading) {
+  const btn = document.getElementById('suggestBtn');
+  if (!btn) return;
+  if (loading) {
+    btn.classList.add('loading');
+    btn.disabled = true;
+    btn.textContent = '⏳ Thinking...';
+  } else {
+    btn.classList.remove('loading');
+    btn.disabled = !apiKeySet;
+    btn.textContent = '✨ Suggest with AI';
+  }
+}
+
+function messagHTML(role, text, time, isNew) {
+  const isUser = role === 'user';
+  return `<div class="msg-wrap ${isUser ? 'user-wrap' : 'op-wrap'}">
+    <div class="msg-label">${isUser ? '👤 User' : '🤖 Beimaral (you/AI)'}</div>
+    <div class="msg-bubble ${isUser ? 'from-user' : 'from-op'} ${isNew ? 'new-msg' : ''}">${escHtml(text)}</div>
+    <div class="msg-time-small">${time || ''}</div>
+  </div>`;
+}
+
+function appendMessage(role, text, time, isNew) {
+  const area = document.getElementById('msgArea');
+  if (!area) return;
+  area.insertAdjacentHTML('beforeend', messagHTML(role, text, time, isNew));
+  area.scrollTop = area.scrollHeight;
+}
+
+function useQR(el) {
+  const input = document.getElementById('replyInput');
+  if (input) {
+    input.value = el.textContent;
+    input.focus();
+    autoResize(input);
+  }
+}
+
+function handleReplyKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
+}
+
+function sendReply() {
+  const input = document.getElementById('replyInput');
+  if (!input || !activeSession) return;
+  const text = input.value.trim();
+  if (!text) return;
+  ws.send(JSON.stringify({ type: 'operator_reply', session_id: activeSession, text }));
+  input.value = '';
+  input.style.height = 'auto';
+  input.focus();
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+let toastTimer;
+function showToast(name, text, isError=false) {
+  const toast = document.getElementById('toast');
+  toast.classList.toggle('error', !!isError);
+  document.getElementById('toastName').textContent = isError ? `⚠️ ${name}` : `💬 ${name}`;
+  document.getElementById('toastText').textContent = (text || '').slice(0, 80);
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 4500);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+connectWS();
+</script>
+</body>
+</html>
